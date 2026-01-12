@@ -5,3 +5,5 @@ top100-cache.json
 npm-debug.log*
 *.log
 /.vercel
+.vercel
+.env*.local
