@@ -1,12 +1,52 @@
 import fetch from 'node-fetch';
-import { writeFileSync } from 'fs';
+import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { generateToken } from '../lib/apple.js';
 import { fetchLyricsByISRC } from '../lib/musixmatch.js';
-import { writeCache } from '../lib/redis.js';
-import { setMemoryCache } from '../lib/memory-cache.js';
+import { readCache, writeCache } from '../lib/redis.js';
+import { getMemoryCache, setMemoryCache } from '../lib/memory-cache.js';
 
 const DEFAULT_TOP100_PLAYLIST_ID = 'pl.d3d10c32fbc540b38e266367dc8cb00c';
+const CACHE_FILE = './top100-cache.json';
+const REDIS_KEY = 'top100-cache';
+
+function normalizePayload(raw) {
+  if (!raw) return null;
+  if (Array.isArray(raw)) return { timestamp: null, data: raw };
+  if (!Array.isArray(raw.data)) return null;
+  return raw;
+}
+
+async function loadPreviousPayload() {
+  let payload = normalizePayload(getMemoryCache());
+  if (payload) return payload;
+
+  if (existsSync(CACHE_FILE)) {
+    try {
+      const fileData = JSON.parse(readFileSync(CACHE_FILE, 'utf8'));
+      payload = normalizePayload(fileData);
+      if (payload) {
+        setMemoryCache(payload);
+        return payload;
+      }
+    } catch (err) {
+      console.error('Failed to read local cache:', err.message);
+    }
+  }
+
+  try {
+    const redisPayload = await readCache(REDIS_KEY);
+    payload = normalizePayload(redisPayload);
+    if (payload) {
+      setMemoryCache(payload);
+      return payload;
+    }
+  } catch (err) {
+    console.error('Failed to read Redis cache:', err.message);
+  }
+
+  return null;
+}
 
 export async function runCron() {
   console.log('Starting KR Top100 cron job');
@@ -38,6 +78,11 @@ export async function runCron() {
 
   console.log(`Fetched ${trackEntries.length} songs from playlist ${topChartPlaylistId}`);
 
+  const previousPayload = await loadPreviousPayload();
+  const previousSongs = new Map(
+    previousPayload?.data?.map((song) => [song.id, song]) ?? []
+  );
+
   const songs = [];
   for (const entry of trackEntries) {
     const attrs = entry.attributes;
@@ -47,20 +92,26 @@ export async function runCron() {
       ? Number.parseInt(attrs.releaseDate.slice(0, 4), 10)
       : null;
 
-    let lyricsFull = null;
-    let lyricsSnippet = null;
-    if (attrs.isrc) {
+    const songId = attrs.isrc || entry.id;
+    const previous = previousSongs.get(songId);
+    let lyricsFull = previous?.lyricsFull ?? null;
+    let lyricsSnippet = previous?.lyricsSnippet ?? null;
+
+    const needsLyrics = attrs.isrc && (!lyricsFull || !lyricsSnippet);
+    if (needsLyrics) {
       try {
         const lyrics = await fetchLyricsByISRC(attrs.isrc);
-        lyricsFull = lyrics?.full ?? null;
-        lyricsSnippet = lyrics?.snippet ?? null;
+        if (lyrics?.full || lyrics?.snippet) {
+          lyricsFull = lyrics.full ?? lyricsFull;
+          lyricsSnippet = lyrics.snippet ?? lyricsSnippet;
+        }
       } catch (e) {
         console.log(`Lyrics lookup failed for ${attrs.isrc}`);
       }
     }
 
     songs.push({
-      id: attrs.isrc || entry.id,
+      id: songId,
       title: attrs.name,
       artist: attrs.artistName,
       album: attrs.albumName ?? null,
@@ -82,7 +133,7 @@ export async function runCron() {
   setMemoryCache(payload);
 
   try {
-    writeFileSync('./top100-cache.json', JSON.stringify(payload, null, 2));
+    writeFileSync(CACHE_FILE, JSON.stringify(payload, null, 2));
     console.log(`Cached ${songs.length} songs to ./top100-cache.json`);
   } catch (err) {
     if (err.code === 'EROFS') {
@@ -92,7 +143,7 @@ export async function runCron() {
     }
   }
 
-  const redisResult = await writeCache('top100-cache', payload);
+  const redisResult = await writeCache(REDIS_KEY, payload);
   if (redisResult) {
     console.log('Cached payload to Redis');
   } else {
