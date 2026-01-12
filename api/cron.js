@@ -4,10 +4,11 @@ import { fileURLToPath } from 'url';
 import { generateToken } from '../lib/apple.js';
 import { fetchLyricsByISRC } from '../lib/musixmatch.js';
 import { writeCache } from '../lib/redis.js';
+import { setMemoryCache } from '../lib/memory-cache.js';
 
 const DEFAULT_TOP100_PLAYLIST_ID = 'pl.d3d10c32fbc540b38e266367dc8cb00c';
 
-async function runCron() {
+export async function runCron() {
   console.log('Starting KR Top100 cron job');
 
   const token = await generateToken();
@@ -78,6 +79,8 @@ async function runCron() {
     data: songs,
   };
 
+  setMemoryCache(payload);
+
   try {
     writeFileSync('./top100-cache.json', JSON.stringify(payload, null, 2));
     console.log(`Cached ${songs.length} songs to ./top100-cache.json`);
@@ -98,15 +101,7 @@ async function runCron() {
 
   console.log('Done');
 
-  const result = {
-    success: true,
-    count: songs.length,
-    sample: payload.data[0],
-    timestamp: payload.timestamp,
-  };
-
-  console.log(JSON.stringify(result, null, 2));
-  return result;
+  return payload;
 }
 
 export default async function handler(req, res) {
@@ -116,8 +111,15 @@ export default async function handler(req, res) {
   }
 
   try {
-    const result = await runCron();
-    res?.status(200)?.json(result);
+    const payload = await runCron();
+    const response = {
+      success: true,
+      count: payload.data.length,
+      sample: payload.data[0],
+      timestamp: payload.timestamp,
+    };
+    console.log(JSON.stringify(response, null, 2));
+    res?.status(200)?.json(response);
   } catch (err) {
     console.error('Cron handler failed:', err);
     res?.status(500)?.json({ error: err.message });
@@ -136,8 +138,18 @@ const isCliRun = (() => {
 })();
 
 if (isCliRun) {
-  runCron().catch((err) => {
-    console.error(err);
-    process.exitCode = 1;
-  });
+  runCron()
+    .then((payload) => {
+      const summary = {
+        success: true,
+        count: payload.data.length,
+        sample: payload.data[0],
+        timestamp: payload.timestamp,
+      };
+      console.log(JSON.stringify(summary, null, 2));
+    })
+    .catch((err) => {
+      console.error(err);
+      process.exitCode = 1;
+    });
 }
