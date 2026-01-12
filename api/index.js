@@ -1,10 +1,8 @@
 import { readFileSync, existsSync } from 'fs';
 import { readCache } from '../lib/redis.js';
 import { getMemoryCache, setMemoryCache } from '../lib/memory-cache.js';
+import { CACHE_FILE, REDIS_KEY } from '../lib/cache-constants.js';
 import { runCron } from './cron.js';
-
-const CACHE_FILE = './top100-cache.json';
-const REDIS_KEY = 'top100-cache';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).end();

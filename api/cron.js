@@ -5,11 +5,9 @@ import { generateToken } from '../lib/apple.js';
 import { fetchLyricsByISRC } from '../lib/musixmatch.js';
 import { readCache, writeCache } from '../lib/redis.js';
 import { getMemoryCache, setMemoryCache } from '../lib/memory-cache.js';
+import { CACHE_FILE, REDIS_KEY } from '../lib/cache-constants.js';
 
 const DEFAULT_TOP100_PLAYLIST_ID = 'pl.d3d10c32fbc540b38e266367dc8cb00c';
-const CACHE_FILE = './top100-cache.json';
-const REDIS_KEY = 'top100-cache';
-
 function normalizePayload(raw) {
   if (!raw) return null;
   if (Array.isArray(raw)) return { timestamp: null, data: raw };
