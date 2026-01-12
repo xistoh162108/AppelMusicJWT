@@ -1,13 +1,14 @@
 {
-  "name": "apple-music-jwt-server",
+  "name": "top100-lyrics-server",
   "version": "1.0.0",
-  "main": "index.js",
+  "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "dev": "node api/cron.js && node api/index.js",
+    "test": "node api/cron.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "node-fetch": "^3.3.2"
   },
   "engines": {
     "node": ">=18"

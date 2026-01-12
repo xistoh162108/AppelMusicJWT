@@ -1,0 +1,7 @@
+node_modules
+.env
+.env.*
+top100-cache.json
+npm-debug.log*
+*.log
+/.vercel

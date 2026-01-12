@@ -1,8 +1,13 @@
 {
   "version": 2,
   "functions": {
-    "index.js": {
-      "maxDuration": 10
+    "api/index.js": { "maxDuration": 30 },
+    "api/cron.js": { "maxDuration": 300 }
+  },
+  "crons": [
+    {
+      "path": "/api/cron",
+      "schedule": "0 */12 * * *"
     }
-  }
+  ]
 }
