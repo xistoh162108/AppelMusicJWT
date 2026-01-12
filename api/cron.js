@@ -1,12 +1,13 @@
 import fetch from 'node-fetch';
 import { writeFileSync } from 'fs';
+import { fileURLToPath } from 'url';
 import { generateToken } from '../lib/apple.js';
 import { fetchLyricsByISRC } from '../lib/musixmatch.js';
 import { writeCache } from '../lib/redis.js';
 
 const DEFAULT_TOP100_PLAYLIST_ID = 'pl.d3d10c32fbc540b38e266367dc8cb00c';
 
-async function main() {
+async function runCron() {
   console.log('Starting KR Top100 cron job');
 
   const token = await generateToken();
@@ -97,11 +98,46 @@ async function main() {
 
   console.log('Done');
 
-  console.log(JSON.stringify({
+  const result = {
     success: true,
     count: songs.length,
-    sample: payload.data[0]
-  }, null, 2));
+    sample: payload.data[0],
+    timestamp: payload.timestamp,
+  };
+
+  console.log(JSON.stringify(result, null, 2));
+  return result;
 }
 
-main().catch(console.error);
+export default async function handler(req, res) {
+  if (req.method && req.method !== 'GET') {
+    res?.status(405)?.end();
+    return;
+  }
+
+  try {
+    const result = await runCron();
+    res?.status(200)?.json(result);
+  } catch (err) {
+    console.error('Cron handler failed:', err);
+    res?.status(500)?.json({ error: err.message });
+    throw err;
+  }
+}
+
+const isCliRun = (() => {
+  try {
+    const entry = process.argv[1];
+    if (!entry) return false;
+    return fileURLToPath(import.meta.url) === entry;
+  } catch {
+    return false;
+  }
+})();
+
+if (isCliRun) {
+  runCron().catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  });
+}
