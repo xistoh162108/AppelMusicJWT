@@ -2,6 +2,7 @@ import fetch from 'node-fetch';
 import { writeFileSync } from 'fs';
 import { generateToken } from '../lib/apple.js';
 import { fetchLyricsByISRC } from '../lib/musixmatch.js';
+import { writeCache } from '../lib/redis.js';
 
 const DEFAULT_TOP100_PLAYLIST_ID = 'pl.d3d10c32fbc540b38e266367dc8cb00c';
 
@@ -71,14 +72,35 @@ async function main() {
     });
   }
 
-  writeFileSync('./top100-cache.json', JSON.stringify(songs, null, 2));
-  console.log(`Cached ${songs.length} songs to ./top100-cache.json`);
+  const payload = {
+    timestamp: new Date().toISOString(),
+    data: songs,
+  };
+
+  try {
+    writeFileSync('./top100-cache.json', JSON.stringify(payload, null, 2));
+    console.log(`Cached ${songs.length} songs to ./top100-cache.json`);
+  } catch (err) {
+    if (err.code === 'EROFS') {
+      console.log('Skipping file cache: filesystem is read-only');
+    } else {
+      throw err;
+    }
+  }
+
+  const redisResult = await writeCache('top100-cache', payload);
+  if (redisResult) {
+    console.log('Cached payload to Redis');
+  } else {
+    console.log('Redis cache skipped (missing configuration?)');
+  }
+
   console.log('Done');
 
   console.log(JSON.stringify({
     success: true,
     count: songs.length,
-    sample: songs[0]
+    sample: payload.data[0]
   }, null, 2));
 }
 
